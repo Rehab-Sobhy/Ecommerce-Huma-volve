@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../features/products/data/models/product_model.dart';
 
 class Product {
   final String id;
@@ -18,6 +19,29 @@ class Product {
     required this.colors,
     required this.sizes,
   });
+
+  factory Product.fromModel(ProductModel model) {
+    return Product(
+      id: model.id.toString(),
+      name: model.title,
+      description: model.description,
+      price: model.price,
+      imageUrl: model.displayImage,
+      colors: const [Colors.white, Colors.black, Colors.grey],
+      sizes: const ['S', 'M', 'L', 'XL'],
+    );
+  }
+
+  ProductModel toModel() {
+    return ProductModel(
+      id: int.tryParse(id) ?? 0,
+      title: name,
+      slug: name.toLowerCase().replaceAll(' ', '-'),
+      price: price,
+      description: description,
+      images: [imageUrl],
+    );
+  }
 }
 
 final dummyProducts = [
