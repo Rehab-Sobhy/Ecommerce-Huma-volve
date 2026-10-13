@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../details/screens/product_details_screen.dart';
-import '../../products/data/models/product_model.dart';
+import '../../products/domain/entities/product_entity.dart';
 
 class ProductCard extends StatefulWidget {
-  final ProductModel product;
+  final ProductEntity product;
   final VoidCallback? onProductChanged;
 
   const ProductCard({

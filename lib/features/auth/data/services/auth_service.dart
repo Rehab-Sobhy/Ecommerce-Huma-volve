@@ -18,6 +18,31 @@ class AuthService {
 
   final Dio _dio;
 
+  /// POST /api/v1/users – Register a new user account.
+  Future<AuthUser> signUp({
+    required String name,
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final response = await _dio.post<Object?>(
+        'v1/users',
+        data: {
+          'name': name.trim(),
+          'email': email.trim(),
+          'password': password,
+          'avatar': 'https://api.dicebear.com/7.x/initials/svg?seed=${Uri.encodeComponent(name.trim())}',
+        },
+      );
+      return AuthUser.fromJson(_asJsonObject(response.data));
+    } on DioException catch (error) {
+      throw AuthException(_messageFor(error));
+    } on FormatException catch (error) {
+      throw AuthException(error.message);
+    }
+  }
+
+  /// POST /api/v1/auth/login – Sign in and return a session with tokens + profile.
   Future<AuthSession> signIn({
     required String email,
     required String password,
@@ -86,7 +111,7 @@ class AuthService {
       DioExceptionType.sendTimeout => 'The request timed out. Please try again.',
       DioExceptionType.connectionError =>
         'Unable to connect. Check your internet connection and try again.',
-      _ => 'Unable to sign in. Please check your details and try again.',
+      _ => 'Unable to complete the request. Please check your details and try again.',
     };
   }
 }

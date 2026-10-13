@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import '../../../../core/widgets/custom_text_field.dart';
@@ -9,9 +8,12 @@ import '../../../main_navigation/screens/main_navigation_screen.dart';
 import '../../sign_up/screens/sign_up_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, this.authService});
+  const LoginScreen({super.key, this.authService, this.initialEmail});
 
   final AuthService? authService;
+
+  /// Pre-fills the email field, e.g. after a successful sign-up.
+  final String? initialEmail;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -27,9 +29,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     _authService = widget.authService ?? AuthService();
-    emailController = TextEditingController();
+    emailController = TextEditingController(text: widget.initialEmail ?? '');
     passwordController = TextEditingController();
-
     super.initState();
   }
 
@@ -166,18 +167,17 @@ class _LoginScreenState extends State<LoginScreen> {
                               animation,
                               secondaryAnimation,
                             ) => const SignUpScreen(),
-                            transitionsBuilder:
-                                (
-                                  context,
-                                  animation,
-                                  secondaryAnimation,
-                                  child,
-                                ) {
-                                  return FadeTransition(
-                                    opacity: animation,
-                                    child: child,
-                                  );
-                                },
+                            transitionsBuilder: (
+                              context,
+                              animation,
+                              secondaryAnimation,
+                              child,
+                            ) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: child,
+                              );
+                            },
                           ),
                         );
                       },
