@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/primary_button.dart';
-import '../../products/data/models/product_model.dart';
-import '../../products/data/services/product_service.dart';
+import '../../products/data/repositories/product_repository_impl.dart';
+import '../../products/domain/entities/product_entity.dart';
+import '../../products/domain/repositories/product_repository.dart';
 import '../../products/widgets/product_form_dialog.dart';
 import '../widgets/color_selector.dart';
 import '../widgets/size_selector.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
-  final ProductModel product;
-  final ProductService? productService;
+  final ProductEntity product;
+  final ProductRepository? repository;
 
   const ProductDetailsScreen({
     super.key,
     required this.product,
-    this.productService,
+    this.repository,
   });
 
   @override
@@ -22,8 +23,8 @@ class ProductDetailsScreen extends StatefulWidget {
 }
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
-  late ProductModel _product;
-  late final ProductService _productService;
+  late ProductEntity _product;
+  late final ProductRepository _repository;
 
   late Color _selectedColor;
   late String _selectedSize;
@@ -40,7 +41,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   final List<String> _availableSizes = const ['S', 'M', 'L', 'XL'];
 
-  List<ProductModel> _relatedProducts = [];
+  List<ProductEntity> _relatedProducts = [];
   bool _isLoadingRelated = true;
   String? _relatedError;
 
@@ -48,7 +49,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   void initState() {
     super.initState();
     _product = widget.product;
-    _productService = widget.productService ?? ProductService();
+    _repository = widget.repository ?? ProductRepositoryImpl();
     _selectedColor = _availableColors.first;
     _selectedSize = _availableSizes.first;
 
@@ -62,12 +63,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     });
 
     try {
-      // First try by ID, or fallback to slug if slug exists
-      List<ProductModel> related = [];
+      List<ProductEntity> related = [];
       if (_product.id > 0) {
-        related = await _productService.getRelatedProductsById(_product.id);
+        related = await _repository.getRelatedProductsById(_product.id);
       } else if (_product.slug.isNotEmpty) {
-        related = await _productService.getRelatedProductsBySlug(_product.slug);
+        related = await _repository.getRelatedProductsBySlug(_product.slug);
       }
 
       if (mounted) {
@@ -90,7 +90,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     final updated = await ProductFormDialog.show(
       context,
       productToEdit: _product,
-      productService: _productService,
+      repository: _repository,
     );
 
     if (updated != null && mounted) {
@@ -132,7 +132,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
     if (confirm == true) {
       try {
-        await _productService.deleteProduct(_product.id);
+        await (_repository as ProductRepositoryImpl).deleteProductEntity(_product.id);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -534,7 +534,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       MaterialPageRoute(
                         builder: (context) => ProductDetailsScreen(
                           product: item,
-                          productService: _productService,
+                          repository: _repository,
                         ),
                       ),
                     );

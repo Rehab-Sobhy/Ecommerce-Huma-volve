@@ -2,37 +2,38 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/custom_text_field.dart';
 import '../../../core/widgets/primary_button.dart';
-import '../data/models/category_model.dart';
-import '../data/models/product_model.dart';
 import '../data/models/product_request.dart';
-import '../data/services/product_service.dart';
+import '../data/repositories/product_repository_impl.dart';
+import '../domain/entities/category_entity.dart';
+import '../domain/entities/product_entity.dart';
+import '../domain/repositories/product_repository.dart';
 
 class ProductFormDialog extends StatefulWidget {
   const ProductFormDialog({
     super.key,
     this.productToEdit,
     this.categories = const [],
-    required this.productService,
+    required this.repository,
   });
 
-  final ProductModel? productToEdit;
-  final List<CategoryModel> categories;
-  final ProductService productService;
+  final ProductEntity? productToEdit;
+  final List<CategoryEntity> categories;
+  final ProductRepository repository;
 
-  static Future<ProductModel?> show(
+  static Future<ProductEntity?> show(
     BuildContext context, {
-    ProductModel? productToEdit,
-    List<CategoryModel> categories = const [],
-    required ProductService productService,
+    ProductEntity? productToEdit,
+    List<CategoryEntity> categories = const [],
+    ProductRepository? repository,
   }) {
-    return showModalBottomSheet<ProductModel>(
+    return showModalBottomSheet<ProductEntity>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ProductFormDialog(
         productToEdit: productToEdit,
         categories: categories,
-        productService: productService,
+        repository: repository ?? ProductRepositoryImpl(),
       ),
     );
   }
@@ -119,14 +120,17 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     setState(() => _isLoading = true);
 
     try {
-      ProductModel result;
+      // Use the data source directly for write operations since the domain
+      // repository interface covers read-only use-cases for now.
+      final impl = widget.repository is ProductRepositoryImpl
+          ? widget.repository as ProductRepositoryImpl
+          : ProductRepositoryImpl();
+
+      ProductEntity result;
       if (_isEditing) {
-        result = await widget.productService.updateProduct(
-          widget.productToEdit!.id,
-          request,
-        );
+        result = await impl.updateProductEntity(widget.productToEdit!.id, request);
       } else {
-        result = await widget.productService.createProduct(request);
+        result = await impl.createProductEntity(request);
       }
 
       if (!mounted) return;
