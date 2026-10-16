@@ -46,19 +46,46 @@ class _HomeView extends StatefulWidget {
 
 class _HomeViewState extends State<_HomeView> {
   late final TextEditingController _searchController;
+  late final ScrollController _scrollController;
   Timer? _debounceTimer;
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
+    _scrollController = ScrollController()..addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_isNearBottom) {
+      context.read<HomeCubit>().loadMoreProducts();
+    }
+  }
+
+  bool get _isNearBottom {
+    if (!_scrollController.hasClients) return false;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.offset;
+    return currentScroll >= (maxScroll - 200);
+  }
+
+  void _scrollToTop() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   void _onSearchChanged(String value) {
@@ -89,7 +116,12 @@ class _HomeViewState extends State<_HomeView> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<HomeCubit, HomeState>(
+    return BlocConsumer<HomeCubit, HomeState>(
+      listener: (context, state) {
+        if (state is HomeProductsLoading) {
+          _scrollToTop();
+        }
+      },
       builder: (context, state) {
         final categories = _categoriesFrom(state);
         final categoryNames = ['All', ...categories.map((c) => c.name)];
@@ -109,6 +141,7 @@ class _HomeViewState extends State<_HomeView> {
               onRefresh: () => context.read<HomeCubit>().refresh(),
               color: AppTheme.primary,
               child: CustomScrollView(
+                controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   SliverToBoxAdapter(
@@ -201,7 +234,7 @@ class _HomeViewState extends State<_HomeView> {
                                         ),
                                         child: const Icon(Icons.tune,
                                             color: Colors.white, size: 20),
-                                      ),
+                                        ),
                                 border: InputBorder.none,
                               ),
                             ),
@@ -237,6 +270,9 @@ class _HomeViewState extends State<_HomeView> {
 
                   // --- Products section ---
                   _buildProductsSliver(context, state),
+
+                  // --- Pagination footer ---
+                  _buildPaginationFooterSliver(context, state),
 
                   const SliverToBoxAdapter(child: SizedBox(height: 80)),
                 ],
@@ -312,6 +348,117 @@ class _HomeViewState extends State<_HomeView> {
         ),
       ),
     );
+  }
+
+  Widget _buildPaginationFooterSliver(BuildContext context, HomeState state) {
+    if (state is! HomeLoaded) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+    if (state.products.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    if (state.isLoadingMore) {
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 24.0),
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: AppTheme.primary,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text(
+                  'Loading more products...',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (state.loadMoreError != null) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 24.0),
+          child: Center(
+            child: Column(
+              children: [
+                const Text(
+                  'Failed to load more products.',
+                  style: TextStyle(
+                    color: AppTheme.error,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      context.read<HomeCubit>().loadMoreProducts(),
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('Try Again'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppTheme.primary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (state.hasReachedMax) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24.0),
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: 1,
+                  width: 40,
+                  color: Colors.grey.shade300,
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  child: Text(
+                    'No more products',
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                Container(
+                  height: 1,
+                  width: 40,
+                  color: Colors.grey.shade300,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return const SliverToBoxAdapter(child: SizedBox.shrink());
   }
 
   Widget _buildProductSkeletonSliver() {

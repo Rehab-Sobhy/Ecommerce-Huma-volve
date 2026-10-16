@@ -27,6 +27,9 @@ class HomeLoaded extends HomeState {
     required this.selectedCategoryIndex,
     required this.searchQuery,
     this.isRefreshing = false,
+    this.isLoadingMore = false,
+    this.hasReachedMax = false,
+    this.loadMoreError,
   });
 
   final List<ProductEntity> products;
@@ -37,12 +40,25 @@ class HomeLoaded extends HomeState {
   /// True when silently refreshing in the background (pull-to-refresh).
   final bool isRefreshing;
 
+  /// True when fetching the next page of products.
+  final bool isLoadingMore;
+
+  /// True when no more products are available from the server.
+  final bool hasReachedMax;
+
+  /// Error message if loading the next page failed.
+  final String? loadMoreError;
+
   HomeLoaded copyWith({
     List<ProductEntity>? products,
     List<CategoryEntity>? categories,
     int? selectedCategoryIndex,
     String? searchQuery,
     bool? isRefreshing,
+    bool? isLoadingMore,
+    bool? hasReachedMax,
+    String? loadMoreError,
+    bool clearLoadMoreError = false,
   }) {
     return HomeLoaded(
       products: products ?? this.products,
@@ -50,6 +66,9 @@ class HomeLoaded extends HomeState {
       selectedCategoryIndex: selectedCategoryIndex ?? this.selectedCategoryIndex,
       searchQuery: searchQuery ?? this.searchQuery,
       isRefreshing: isRefreshing ?? this.isRefreshing,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      hasReachedMax: hasReachedMax ?? this.hasReachedMax,
+      loadMoreError: clearLoadMoreError ? null : (loadMoreError ?? this.loadMoreError),
     );
   }
 
@@ -60,6 +79,9 @@ class HomeLoaded extends HomeState {
         selectedCategoryIndex,
         searchQuery,
         isRefreshing,
+        isLoadingMore,
+        hasReachedMax,
+        loadMoreError,
       ];
 }
 

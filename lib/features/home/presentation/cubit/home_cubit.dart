@@ -16,6 +16,9 @@ class HomeCubit extends Cubit<HomeState> {
   final GetProductsUseCase _getProducts;
   final GetCategoriesUseCase _getCategories;
 
+  // Page size for paginated requests
+  static const int pageSize = 10;
+
   // Cached filter state so products can be re-fetched after category/search change
   int _selectedCategoryIndex = 0;
   String _searchQuery = '';
@@ -25,7 +28,7 @@ class HomeCubit extends Cubit<HomeState> {
     emit(const HomeLoading());
     try {
       final categoriesFuture = _getCategories();
-      final productsFuture = _getProducts();
+      final productsFuture = _getProducts(offset: 0, limit: pageSize);
       final List<CategoryEntity> categories = await categoriesFuture;
       final List<ProductEntity> products = await productsFuture;
 
@@ -34,6 +37,7 @@ class HomeCubit extends Cubit<HomeState> {
         products: products,
         selectedCategoryIndex: _selectedCategoryIndex,
         searchQuery: _searchQuery,
+        hasReachedMax: products.length < pageSize,
       ));
     } catch (e) {
       emit(HomeError(e.toString()));
@@ -44,7 +48,7 @@ class HomeCubit extends Cubit<HomeState> {
   Future<void> refresh() async {
     final current = state;
     if (current is HomeLoaded) {
-      emit(current.copyWith(isRefreshing: true));
+      emit(current.copyWith(isRefreshing: true, clearLoadMoreError: true));
     }
     try {
       final categoryId = _resolvedCategoryId(
@@ -53,6 +57,8 @@ class HomeCubit extends Cubit<HomeState> {
 
       final categoriesFuture = _getCategories();
       final productsFuture = _getProducts(
+        offset: 0,
+        limit: pageSize,
         categoryId: categoryId,
         title: _searchQuery.isNotEmpty ? _searchQuery : null,
       );
@@ -64,6 +70,7 @@ class HomeCubit extends Cubit<HomeState> {
         products: products,
         selectedCategoryIndex: _selectedCategoryIndex,
         searchQuery: _searchQuery,
+        hasReachedMax: products.length < pageSize,
       ));
     } catch (e) {
       emit(HomeError(e.toString()));
@@ -87,6 +94,8 @@ class HomeCubit extends Cubit<HomeState> {
 
     try {
       final List<ProductEntity> products = await _getProducts(
+        offset: 0,
+        limit: pageSize,
         categoryId: _resolvedCategoryId(categories),
         title: _searchQuery.isNotEmpty ? _searchQuery : null,
       );
@@ -95,6 +104,7 @@ class HomeCubit extends Cubit<HomeState> {
         products: products,
         selectedCategoryIndex: _selectedCategoryIndex,
         searchQuery: _searchQuery,
+        hasReachedMax: products.length < pageSize,
       ));
     } catch (e) {
       emit(HomeError(e.toString()));
@@ -117,6 +127,8 @@ class HomeCubit extends Cubit<HomeState> {
 
     try {
       final List<ProductEntity> products = await _getProducts(
+        offset: 0,
+        limit: pageSize,
         categoryId: _resolvedCategoryId(categories),
         title: _searchQuery.isNotEmpty ? _searchQuery : null,
       );
@@ -125,6 +137,7 @@ class HomeCubit extends Cubit<HomeState> {
         products: products,
         selectedCategoryIndex: _selectedCategoryIndex,
         searchQuery: _searchQuery,
+        hasReachedMax: products.length < pageSize,
       ));
     } catch (e) {
       emit(HomeError(e.toString()));
@@ -145,6 +158,8 @@ class HomeCubit extends Cubit<HomeState> {
 
     try {
       final List<ProductEntity> products = await _getProducts(
+        offset: 0,
+        limit: pageSize,
         categoryId: _resolvedCategoryId(categories),
         title: _searchQuery.isNotEmpty ? _searchQuery : null,
       );
@@ -153,9 +168,46 @@ class HomeCubit extends Cubit<HomeState> {
         products: products,
         selectedCategoryIndex: _selectedCategoryIndex,
         searchQuery: _searchQuery,
+        hasReachedMax: products.length < pageSize,
       ));
     } catch (e) {
       emit(HomeError(e.toString()));
+    }
+  }
+
+  /// Loads the next page of products (pagination / infinite scroll).
+  Future<void> loadMoreProducts() async {
+    final current = state;
+    if (current is! HomeLoaded) return;
+    if (current.isLoadingMore || current.hasReachedMax || current.isRefreshing) {
+      return;
+    }
+
+    emit(current.copyWith(isLoadingMore: true, clearLoadMoreError: true));
+
+    try {
+      final categoryId = _resolvedCategoryId(current.categories);
+      final newProducts = await _getProducts(
+        offset: current.products.length,
+        limit: pageSize,
+        categoryId: categoryId,
+        title: _searchQuery.isNotEmpty ? _searchQuery : null,
+      );
+
+      final existingIds = current.products.map((p) => p.id).toSet();
+      final uniqueNewProducts =
+          newProducts.where((p) => !existingIds.contains(p.id)).toList();
+
+      emit(current.copyWith(
+        products: [...current.products, ...uniqueNewProducts],
+        isLoadingMore: false,
+        hasReachedMax: newProducts.isEmpty || newProducts.length < pageSize,
+      ));
+    } catch (e) {
+      emit(current.copyWith(
+        isLoadingMore: false,
+        loadMoreError: e.toString(),
+      ));
     }
   }
 
