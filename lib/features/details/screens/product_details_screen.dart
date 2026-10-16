@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../core/services/deep_link_service.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../../products/data/repositories/product_repository_impl.dart';
@@ -9,22 +11,32 @@ import '../widgets/color_selector.dart';
 import '../widgets/size_selector.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
-  final ProductEntity product;
+  final ProductEntity? product;
+  final int? productId;
+  final String? productSlug;
   final ProductRepository? repository;
 
   const ProductDetailsScreen({
     super.key,
-    required this.product,
+    this.product,
+    this.productId,
+    this.productSlug,
     this.repository,
-  });
+  }) : assert(
+          product != null || productId != null || productSlug != null,
+          'Either product, productId, or productSlug must be provided',
+        );
 
   @override
   State<ProductDetailsScreen> createState() => _ProductDetailsScreenState();
 }
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
-  late ProductEntity _product;
+  ProductEntity? _product;
   late final ProductRepository _repository;
+
+  bool _isLoadingProduct = false;
+  String? _productError;
 
   late Color _selectedColor;
   late String _selectedSize;
@@ -48,15 +60,55 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _product = widget.product;
     _repository = widget.repository ?? ProductRepositoryImpl();
     _selectedColor = _availableColors.first;
     _selectedSize = _availableSizes.first;
 
-    _loadRelatedProducts();
+    if (widget.product != null) {
+      _product = widget.product;
+      _loadRelatedProducts();
+    } else {
+      _fetchProduct();
+    }
+  }
+
+  Future<void> _fetchProduct() async {
+    setState(() {
+      _isLoadingProduct = true;
+      _productError = null;
+    });
+
+    try {
+      ProductEntity fetched;
+      if (widget.productId != null) {
+        fetched = await _repository.getProductById(widget.productId!);
+      } else if (widget.productSlug != null) {
+        fetched = await _repository.getProductBySlug(widget.productSlug!);
+      } else {
+        throw Exception('No product identifier provided.');
+      }
+
+      if (mounted) {
+        setState(() {
+          _product = fetched;
+          _isLoadingProduct = false;
+        });
+        _loadRelatedProducts();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _productError = e.toString();
+          _isLoadingProduct = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadRelatedProducts() async {
+    final prod = _product;
+    if (prod == null) return;
+
     setState(() {
       _isLoadingRelated = true;
       _relatedError = null;
@@ -64,15 +116,15 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
     try {
       List<ProductEntity> related = [];
-      if (_product.id > 0) {
-        related = await _repository.getRelatedProductsById(_product.id);
-      } else if (_product.slug.isNotEmpty) {
-        related = await _repository.getRelatedProductsBySlug(_product.slug);
+      if (prod.id > 0) {
+        related = await _repository.getRelatedProductsById(prod.id);
+      } else if (prod.slug.isNotEmpty) {
+        related = await _repository.getRelatedProductsBySlug(prod.slug);
       }
 
       if (mounted) {
         setState(() {
-          _relatedProducts = related.where((p) => p.id != _product.id).toList();
+          _relatedProducts = related.where((p) => p.id != prod.id).toList();
           _isLoadingRelated = false;
         });
       }
@@ -87,9 +139,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   }
 
   Future<void> _handleEdit() async {
+    if (_product == null) return;
     final updated = await ProductFormDialog.show(
       context,
-      productToEdit: _product,
+      productToEdit: _product!,
       repository: _repository,
     );
 
@@ -107,11 +160,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   }
 
   Future<void> _handleDelete() async {
+    if (_product == null) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Product'),
-        content: Text('Are you sure you want to delete "${_product.title}"?'),
+        content: Text('Are you sure you want to delete "${_product!.title}"?'),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
           TextButton(
@@ -132,7 +186,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
     if (confirm == true) {
       try {
-        await (_repository as ProductRepositoryImpl).deleteProductEntity(_product.id);
+        await (_repository as ProductRepositoryImpl).deleteProductEntity(_product!.id);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -140,7 +194,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.of(context).pop(true); // Return true so caller reloads
+        Navigator.of(context).pop(true);
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -153,9 +207,253 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     }
   }
 
+  void _showShareDeepLinkModal(BuildContext context) {
+    if (_product == null) return;
+    final prod = _product!;
+    final webUrl = DeepLinkService.buildWebLink(productId: prod.id);
+    final appUrl = DeepLinkService.buildCustomSchemeLink(productId: prod.id);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.link, color: AppTheme.primary, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Share Product Deep Link',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            prod.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                _buildLinkTile(
+                  title: 'Universal Web Link (HTTPS)',
+                  subtitle: webUrl,
+                  onCopy: () => _copyToClipboard(context, webUrl, 'Web link copied!'),
+                ),
+                const SizedBox(height: 12),
+                _buildLinkTile(
+                  title: 'App Scheme Deep Link',
+                  subtitle: appUrl,
+                  onCopy: () => _copyToClipboard(context, appUrl, 'App scheme link copied!'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLinkTile({
+    required String title,
+    required String subtitle,
+    required VoidCallback onCopy,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade700,
+                    fontFamily: 'monospace',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.copy, size: 18, color: AppTheme.primary),
+            tooltip: 'Copy Link',
+            onPressed: onCopy,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copyToClipboard(BuildContext context, String text, String message) {
+    Clipboard.setData(ClipboardData(text: text));
+    Navigator.of(context).pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.primary,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _handlePop() {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    } else {
+      Navigator.pushReplacementNamed(context, '/');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final images = _product.sanitizedImages;
+    if (_isLoadingProduct) {
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+            onPressed: _handlePop,
+          ),
+          title: const Text(
+            'Product Details',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: AppTheme.primary),
+              SizedBox(height: 16),
+              Text(
+                'Opening deep link product...',
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_productError != null && _product == null) {
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+            onPressed: _handlePop,
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppTheme.error.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.error_outline, size: 48, color: AppTheme.error),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Product Not Found',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _productError!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _fetchProduct,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Try Again'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final product = _product!;
+    final images = product.sanitizedImages;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -174,9 +472,21 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 ),
                 child: const Icon(Icons.arrow_back_ios_new, size: 16),
               ),
-              onPressed: () => Navigator.pop(context),
+              onPressed: _handlePop,
             ),
             actions: [
+              IconButton(
+                tooltip: 'Share Deep Link',
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.share_outlined, size: 18),
+                ),
+                onPressed: () => _showShareDeepLinkModal(context),
+              ),
               IconButton(
                 icon: Container(
                   padding: const EdgeInsets.all(8),
@@ -249,7 +559,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     },
                     itemBuilder: (context, index) {
                       return Hero(
-                        tag: index == 0 ? 'product-${_product.id}' : 'product-img-$index',
+                        tag: index == 0 ? 'product-${product.id}' : 'product-img-$index',
                         child: Image.network(
                           images[index],
                           fit: BoxFit.cover,
@@ -304,7 +614,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (_product.category != null)
+                    if (product.category != null)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         margin: const EdgeInsets.only(bottom: 12),
@@ -313,7 +623,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          _product.category!.name,
+                          product.category!.name,
                           style: const TextStyle(
                             color: AppTheme.primary,
                             fontWeight: FontWeight.w600,
@@ -327,7 +637,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            _product.title,
+                            product.title,
                             style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                                   fontSize: 24,
                                   height: 1.2,
@@ -336,7 +646,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         ),
                         const SizedBox(width: 16),
                         Text(
-                          '\$${_product.price.toStringAsFixed(2)}',
+                          '\$${product.price.toStringAsFixed(2)}',
                           style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                                 color: AppTheme.primary,
                                 fontSize: 24,
@@ -353,8 +663,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _product.description.isNotEmpty
-                          ? _product.description
+                      product.description.isNotEmpty
+                          ? product.description
                           : 'No description available for this product.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             height: 1.6,
@@ -439,12 +749,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     ),
                     const SizedBox(height: 32),
                     PrimaryButton(
-                      text: 'Add to Cart • \$${(_product.price * _quantity).toStringAsFixed(2)}',
+                      text: 'Add to Cart • \$${(product.price * _quantity).toStringAsFixed(2)}',
                       onPressed: () {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              '$_quantity x ${_product.title} added to cart',
+                              '$_quantity x ${product.title} added to cart',
                             ),
                             behavior: SnackBarBehavior.floating,
                             shape: RoundedRectangleBorder(
