@@ -24,6 +24,28 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!-- Deep Linking: Custom Schemes (humavolve:// and ecommerce://) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="humavolve" android:host="product" />
+                <data android:scheme="humavolve" android:host="products" />
+                <data android:scheme="ecommerce" android:host="product" />
+                <data android:scheme="ecommerce" android:host="products" />
+            </intent-filter>
+
+            <!-- Deep Linking: App Links (HTTP / HTTPS) -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="ecommerce.humavolve.com" android:pathPrefix="/products" />
+                <data android:scheme="https" android:host="ecommerce.humavolve.com" android:pathPrefix="/product" />
+                <data android:scheme="http" android:host="ecommerce.humavolve.com" android:pathPrefix="/products" />
+                <data android:scheme="http" android:host="ecommerce.humavolve.com" android:pathPrefix="/product" />
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
